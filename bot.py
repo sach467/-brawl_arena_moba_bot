@@ -1,0 +1,245 @@
+import asyncio
+import os
+import random
+import sqlite3
+from datetime import datetime, timedelta
+from threading import Thread
+
+from flask import Flask
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from db import init_db, get_player, set_username, update_rating
+from elo import update_elo, get_rank
+
+TOKEN = os.getenv("TOKEN")
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# ---------- Очередь ----------
+queue = {}
+queue_lock = asyncio.Lock()
+
+RANGE_START = 50
+RANGE_STEP = 50
+WAIT_STEP = 5
+MAX_RANGE = 500
+
+
+def main_menu():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⚔️ Играть 1x1", callback_data="play")
+    kb.button(text="📊 Профиль", callback_data="profile")
+    kb.button(text="🏆 Топ игроков", callback_data="top")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    user = await get_player(message.from_user.id)
+    await set_username(message.from_user.id, message.from_user.first_name or "Игрок")
+
+    await message.answer(
+        f"Привет, {message.from_user.first_name}!\n"
+        f"Твой ранг: {get_rank(user[2])} ({user[2]} очков)\n\n"
+        "Жми «Играть», чтобы войти в очередь.",
+        reply_markup=main_menu()
+    )
+
+
+@dp.callback_query(F.data == "profile")
+async def cb_profile(cb: types.CallbackQuery):
+    u = await get_player(cb.from_user.id)
+    await cb.answer()
+    await cb.message.answer(
+        f"👤 {u[1]}\n"
+        f"🏅 Ранг: {get_rank(u[2])} ({u[2]})\n"
+        f"✅ Побед: {u[3]}\n"
+        f"❌ Поражений: {u[4]}"
+    )
+
+
+@dp.callback_query(F.data == "top")
+async def cb_top(cb: types.CallbackQuery):
+    import aiosqlite
+    async with aiosqlite.connect("game.db") as db:
+        async with db.execute(
+            "SELECT username, rating, wins FROM players ORDER BY rating DESC LIMIT 10"
+        ) as cur:
+            rows = await cur.fetchall()
+
+    await cb.answer()
+    if not rows:
+        await cb.message.answer("Топ пока пуст.")
+        return
+
+    text = "🏆 Топ-10 игроков:\n\n"
+    for i, (name, rating, wins) in enumerate(rows, 1):
+        text += f"{i}. {name or 'Игрок'} — {rating} ({get_rank(rating)}), побед: {wins}\n"
+    await cb.message.answer(text)
+
+
+@dp.callback_query(F.data == "play")
+async def cb_play(cb: types.CallbackQuery):
+    user_id = cb.from_user.id
+    user = await get_player(user_id)
+    username = user[1] or "Игрок"
+    rating = user[2]
+
+    async with queue_lock:
+        if user_id in queue:
+            await cb.answer("Ты уже в очереди!", show_alert=True)
+            return
+
+        opponent_id = None
+        for other_id, (_, other_rating, _) in queue.items():
+            if abs(other_rating - rating) <= RANGE_START:
+                opponent_id = other_id
+                break
+
+        if opponent_id:
+            opp_name, opp_rating, opp_msg_id = queue.pop(opponent_id)
+            await cb.answer()
+            await start_match(
+                p1=(user_id, username, rating),
+                p2=(opponent_id, opp_name, opp_rating),
+                p1_msg=cb.message.message_id,
+                p2_msg=opp_msg_id,
+            )
+            return
+
+        queue[user_id] = (username, rating, cb.message.message_id)
+        await cb.answer("Ищем соперника...", show_alert=False)
+        await cb.message.edit_text(
+            f"🔍 Поиск соперника...\nТвой рейтинг: {rating} ({get_rank(rating)})\n"
+            "Диапазон поиска будет расширяться каждые 5 секунд.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel")]
+            ])
+        )
+
+    asyncio.create_task(expand_search(user_id))
+
+
+async def expand_search(user_id: int):
+    for _ in range(10):
+        await asyncio.sleep(WAIT_STEP)
+        async with queue_lock:
+            if user_id not in queue:
+                return
+
+            username, rating, msg_id = queue[user_id]
+            current_range = RANGE_START + RANGE_STEP * (_ + 1)
+            if current_range > MAX_RANGE:
+                current_range = MAX_RANGE
+
+            for other_id, (opp_name, opp_rating, opp_msg_id) in list(queue.items()):
+                if other_id == user_id:
+                    continue
+                if abs(opp_rating - rating) <= current_range:
+                    queue.pop(other_id)
+                    queue.pop(user_id)
+                    await start_match(
+                        p1=(user_id, username, rating),
+                        p2=(other_id, opp_name, opp_rating),
+                        p1_msg=msg_id,
+                        p2_msg=opp_msg_id,
+                    )
+                    return
+
+            try:
+                await bot.edit_message_text(
+                    chat_id=user_id,
+                    message_id=msg_id,
+                    text=(
+                        f"🔍 Поиск соперника...\n"
+                        f"Твой рейтинг: {rating} ({get_rank(rating)})\n"
+                        f"Диапазон: ±{current_range}"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel")]
+                    ])
+                )
+            except Exception:
+                pass
+
+
+@dp.callback_query(F.data == "cancel")
+async def cb_cancel(cb: types.CallbackQuery):
+    async with queue_lock:
+        queue.pop(cb.from_user.id, None)
+    await cb.answer("Поиск отменён")
+    await cb.message.edit_text("Ты вышел из очереди.", reply_markup=main_menu())
+
+
+async def start_match(p1, p2, p1_msg, p2_msg):
+    p1_id, p1_name, p1_rating = p1
+    p2_id, p2_name, p2_rating = p2
+
+    winner, loser = random.sample([p1, p2], 2)
+
+    w_id, w_name, w_rating = winner
+    l_id, l_name, l_rating = loser
+
+    new_w_rating, new_l_rating = update_elo(w_rating, l_rating)
+
+    await update_rating(w_id, new_w_rating, win=True)
+    await update_rating(l_id, new_l_rating, win=False)
+
+    try:
+        await bot.edit_message_text(
+            chat_id=w_id,
+            message_id=p1_msg if w_id == p1_id else p2_msg,
+            text=(
+                f"🏆 Победа!\n\n"
+                f"Соперник: {l_name}\n"
+                f"Рейтинг: {w_rating} → {new_w_rating} (+{new_w_rating - w_rating})\n"
+                f"Ранг: {get_rank(new_w_rating)}"
+            ),
+            reply_markup=main_menu()
+        )
+    except Exception:
+        pass
+
+    try:
+        await bot.edit_message_text(
+            chat_id=l_id,
+            message_id=p1_msg if l_id == p1_id else p2_msg,
+            text=(
+                f"💀 Поражение\n\n"
+                f"Соперник: {w_name}\n"
+                f"Рейтинг: {l_rating} → {new_l_rating} ({new_l_rating - l_rating})\n"
+                f"Ранг: {get_rank(new_l_rating)}"
+            ),
+            reply_markup=main_menu()
+        )
+    except Exception:
+        pass
+
+
+# ---------- Flask для Render ----------
+app = Flask('')
+
+
+@app.route('/')
+def home():
+    return "Bot is running"
+
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+
+async def main():
+    await init_db()
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    Thread(target=run_flask, daemon=True).start()
+    asyncio.run(main())
