@@ -55,3 +55,74 @@ async def update_rating(user_id: int, new_rating: int, win: bool):
                 (new_rating, user_id)
             )
         await db.commit()
+async def init_rooms_table():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS rooms (
+                room_id TEXT PRIMARY KEY,
+                captain_id INTEGER,
+                created_at TEXT
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS room_players (
+                room_id TEXT,
+                user_id INTEGER,
+                username TEXT,
+                role TEXT,
+                is_ready INTEGER DEFAULT 0,
+                PRIMARY KEY (room_id, user_id)
+            )
+        """)
+        await db.commit()
+
+
+async def create_room(room_id: str, captain_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO rooms (room_id, captain_id, created_at) VALUES (?, ?, datetime('now'))",
+            (room_id, captain_id)
+        )
+        await db.commit()
+
+
+async def get_room(room_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT room_id, captain_id FROM rooms WHERE room_id=?", (room_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+
+async def delete_room(room_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM rooms WHERE room_id=?", (room_id,))
+        await db.execute("DELETE FROM room_players WHERE room_id=?", (room_id,))
+        await db.commit()
+
+
+async def add_player_to_room(room_id: str, user_id: int, username: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO room_players (room_id, user_id, username) VALUES (?, ?, ?)",
+            (room_id, user_id, username)
+        )
+        await db.commit()
+
+
+async def get_room_players(room_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, username, role, is_ready FROM room_players WHERE room_id=?",
+            (room_id,)
+        ) as cur:
+            return await cur.fetchall()
+
+
+async def remove_player_from_room(room_id: str, user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM room_players WHERE room_id=? AND user_id=?",
+            (room_id, user_id)
+        )
+        await db.commit()
