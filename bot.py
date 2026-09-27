@@ -38,6 +38,7 @@ MAX_RANGE = 500
 def main_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="⚔️ Играть 1x1", callback_data="play")
+    kb.button(text="🏠 Создать комнату", callback_data="create_room")
     kb.button(text="📊 Профиль", callback_data="profile")
     kb.button(text="🏆 Топ игроков", callback_data="top")
     kb.adjust(1)
