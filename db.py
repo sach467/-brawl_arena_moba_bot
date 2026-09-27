@@ -126,3 +126,22 @@ async def remove_player_from_room(room_id: str, user_id: int):
             (room_id, user_id)
         )
         await db.commit()
+async def add_bot_to_room(room_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM room_players WHERE room_id=?", (room_id,)
+        ) as cur:
+            count = (await cur.fetchone())[0]
+
+        if count >= 6:
+            return False
+
+        bot_id = -1000000 - count
+        bot_name = f"🤖 Бот {count}"
+        await db.execute(
+            "INSERT INTO room_players (room_id, user_id, username, is_ready) VALUES (?, ?, ?, 1)",
+            (room_id, bot_id, bot_name)
+        )
+        await db.commit()
+        return True
+        
