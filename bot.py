@@ -308,6 +308,7 @@ async def cb_ready(cb: types.CallbackQuery):
     )
 
 
+
 @dp.callback_query(F.data.startswith("start_"))
 async def cb_start(cb: types.CallbackQuery):
     room_id = cb.data.split("_")[1]
