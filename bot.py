@@ -15,10 +15,11 @@ from db import (
     init_db, get_player, set_username, update_rating,
     init_rooms_table, create_room, get_room, delete_room,
     add_player_to_room, get_room_players, remove_player_from_room,
-    add_bot_to_room, set_player_role
+    add_bot_to_room, set_player_role,
+set_chat_state, get_chat_state, clear_chat_state
 )
 from elo import update_elo, get_rank
-from rooms import generate_room_id, room_keyboard, room_text, roles_keyboard, ROLE_NAMES
+from rooms import generate_room_id, room_keyboard, room_text, roles_keyboard, ROLE_NAMES, chat_exit_keyboard
 
 TOKEN = os.getenv("TOKEN")
 
@@ -443,6 +444,51 @@ async def cb_back(cb: types.CallbackQuery):
         await room_text(room_id),
         reply_markup=room_keyboard(room_id, is_captain=(room[1] == cb.from_user.id))
     )    
+@dp.callback_query(F.data.startswith("back_"))
+async def cb_back(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    await clear_chat_state(cb.from_user.id)
+    room = await get_room(room_id)
+    await cb.answer()
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=(room[1] == cb.from_user.id))
+    )
+
+
+@dp.callback_query(F.data.startswith("chat_"))
+async def cb_chat(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    await set_chat_state(cb.from_user.id, room_id)
+    await cb.answer("Ты в чате комнаты")
+    await cb.message.edit_text(
+        f"💬 Чат комнаты #{room_id}\n\n"
+        f"Пиши сюда — сообщение увидят все игроки.\n"
+        f"Чтобы выйти — нажми кнопку ниже.",
+        reply_markup=chat_exit_keyboard(room_id)
+    )
+
+
+@dp.message(F.text & ~F.text.startswith("/"))
+async def chat_forward(message: types.Message):
+    room_id = await get_chat_state(message.from_user.id)
+    if not room_id:
+        return
+
+    players = await get_room_players(room_id)
+    text = f"💬 {message.from_user.first_name}: {message.text}"
+
+    for uid, uname, role, ready in players:
+        if uid == message.from_user.id:
+            continue
+        if uid < 0:
+            continue
+        try:
+            await bot.send_message(uid, text)
+        except Exception:
+            pass
+
+    await message.answer("✅ Отправлено")    
 # ---------- Flask для Render ----------
 app = Flask('')
 
