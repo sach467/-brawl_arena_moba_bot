@@ -322,11 +322,11 @@ async def cb_start(cb: types.CallbackQuery):
     if len(players) < 6:
         await cb.answer(f"Нужно 6 игроков, сейчас {len(players)}.", show_alert=True)
         return
-all_ready = all(p[3] for p in players)
-if not all_ready:
-    not_ready = [p[1] for p in players if not p[3]]
-    await cb.answer(f"Не готовы: {', '.join(not_ready)}", show_alert=True)
-    return
+     all_ready = all(p[3] for p in players)
+     if not all_ready:
+        not_ready = [p[1] for p in players if not p[3]]
+        await cb.answer(f"Не готовы: {', '.join(not_ready)}", show_alert=True)
+        return
 
     await cb.answer("Игра начинается!")
     await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")  @dp.callback_query(F.data.startswith("addbot_"))
