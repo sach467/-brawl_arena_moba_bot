@@ -323,13 +323,34 @@ async def cb_start(cb: types.CallbackQuery):
         return
 
     all_ready = all(p[3] for p in players)
-    if not all_ready:
-        await cb.answer("Не все игроки готовы.", show_alert=True)
-        return
+if not all_ready:
+    not_ready = [p[1] for p in players if not p[3]]
+    await cb.answer(f"Не готовы: {', '.join(not_ready)}", show_alert=True)
+    return
 
     await cb.answer("Игра начинается!")
     await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")
-    
+    @dp.callback_query(F.data.startswith("addbot_"))
+async def cb_addbot(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    room = await get_room(room_id)
+
+    if room[1] != cb.from_user.id:
+        await cb.answer("Только капитан может добавлять ботов.", show_alert=True)
+        return
+
+    added = await add_bot_to_room(room_id)
+    if not added:
+        await cb.answer("Комната уже полная.", show_alert=True)
+        return
+
+    await cb.answer("Бот добавлен")
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=True)
+    )
+
+
 
 # ---------- Flask для Render ----------
 app = Flask('')
