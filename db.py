@@ -144,4 +144,37 @@ async def add_bot_to_room(room_id: str):
         )
         await db.commit()
         return True
-        
+async def set_player_role(room_id: str, user_id: int, role: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM room_players WHERE room_id=? AND role=?",
+            (room_id, role)
+        ) as cur:
+            count = (await cur.fetchone())[0]
+
+        max_slots = {"carry": 2, "support": 1}
+        limit = max_slots.get(role, 1)
+
+        async with db.execute(
+            "SELECT role FROM room_players WHERE room_id=? AND user_id=?",
+            (room_id, user_id)
+        ) as cur:
+            current = await cur.fetchone()
+
+        if current and current[0] == role:
+            await db.execute(
+                "UPDATE room_players SET role=NULL WHERE room_id=? AND user_id=?",
+                (room_id, user_id)
+            )
+            await db.commit()
+            return True
+
+        if count >= limit:
+            return False
+
+        await db.execute(
+            "UPDATE room_players SET role=? WHERE room_id=? AND user_id=?",
+            (role, room_id, user_id)
+        )
+        await db.commit()
+        return True        
