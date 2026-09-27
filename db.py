@@ -79,8 +79,14 @@ async def init_rooms_table():
                 PRIMARY KEY (room_id, user_id)
             )
         """)
+        
+        await db.execute("""
+    CREATE TABLE IF NOT EXISTS room_chat_state (
+        user_id INTEGER PRIMARY KEY,
+        room_id TEXT
+    )
+""")
         await db.commit()
-
 
 async def create_room(room_id: str, captain_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -183,3 +189,25 @@ async def set_player_role(room_id: str, user_id: int, role: str):
         )
         await db.commit()
         return True        
+async def set_chat_state(user_id: int, room_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO room_chat_state (user_id, room_id) VALUES (?, ?)",
+            (user_id, room_id)
+        )
+        await db.commit()
+
+
+async def get_chat_state(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT room_id FROM room_chat_state WHERE user_id=?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def clear_chat_state(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM room_chat_state WHERE user_id=?", (user_id,))
+        await db.commit()
