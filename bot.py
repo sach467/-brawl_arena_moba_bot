@@ -15,7 +15,7 @@ from db import (
     init_db, get_player, set_username, update_rating,
     init_rooms_table, create_room, get_room, delete_room,
     add_player_to_room, get_room_players, remove_player_from_room,
-    add_bot_to_room
+    add_bot_to_room, set_player_role
 )
 from elo import update_elo, get_rank
 from rooms import generate_room_id, room_keyboard, room_text
