@@ -10,7 +10,6 @@ from db import (
 def generate_room_id() -> str:
     return str(random.randint(1000, 9999))
 
-
 def room_keyboard(room_id: str, is_captain: bool = False):
     buttons = [
         [InlineKeyboardButton(text="✅ Готов", callback_data=f"ready_{room_id}")],
@@ -18,6 +17,7 @@ def room_keyboard(room_id: str, is_captain: bool = False):
     ]
     if is_captain:
         buttons.append([InlineKeyboardButton(text="🎮 Начать игру", callback_data=f"start_{room_id}")])
+        buttons.append([InlineKeyboardButton(text="🤖 Добавить бота", callback_data=f"addbot_{room_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
