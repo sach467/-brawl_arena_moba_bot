@@ -43,3 +43,16 @@ async def room_text(room_id: str) -> str:
         text += "\nВсе на месте! Капитан может начинать."
 
     return text
+def roles_keyboard(room_id: str):
+    buttons = [
+        [InlineKeyboardButton(text="⚔️ Керри", callback_data=f"setrole_{room_id}_carry")],
+        [InlineKeyboardButton(text="💚 Саппорт", callback_data=f"setrole_{room_id}_support")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_{room_id}")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+ROLE_NAMES = {
+    "carry": "⚔️ Керри",
+    "support": "💚 Саппорт",
+}
