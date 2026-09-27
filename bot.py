@@ -32,11 +32,12 @@ RANGE_START = 50
 RANGE_STEP = 50
 WAIT_STEP = 5
 MAX_RANGE = 500
-
+search_queue = []
+search_lock = asyncio.Lock()
 
 def main_menu():
     kb = InlineKeyboardBuilder()
-    kb.button(text="⚔️ Играть 1x1", callback_data="play")
+    kb.button(text="🎮 Играть 3x3", callback_data="search_3x3")
     kb.button(text="🏠 Создать комнату", callback_data="create_room")
     kb.button(text="📊 Профиль", callback_data="profile")
     kb.button(text="🏆 Топ игроков", callback_data="top")
@@ -345,7 +346,63 @@ async def cb_addbot(cb: types.CallbackQuery):
         reply_markup=room_keyboard(room_id, is_captain=True)
     )
 
+@dp.callback_query(F.data == "search_3x3")
+async def cb_search_3x3(cb: types.CallbackQuery):
+    user_id = cb.from_user.id
+    name = cb.from_user.first_name or "Игрок"
 
+    async with search_lock:
+        if any(u[0] == user_id for u in search_queue):
+            await cb.answer("Ты уже в поиске!", show_alert=True)
+            return
+
+        search_queue.append((user_id, name))
+        count = len(search_queue)
+
+        if count < 6:
+            await cb.answer("Ищем игроков...", show_alert=False)
+            await cb.message.edit_text(
+                f"🔍 Поиск игроков 3x3\n\n"
+                f"Найдено: {count}/6\n\n"
+                f"Сейчас в очереди:\n" +
+                "\n".join(f"• {u[1]}" for u in search_queue),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_search")]
+                ])
+            )
+            return
+
+        # Набралось 6 — создаём комнату
+        players = search_queue[:6]
+        search_queue.clear()
+
+    room_id = generate_room_id()
+    captain_id = players[0][0]
+    await create_room(room_id, captain_id)
+
+    for uid, uname in players:
+        await add_player_to_room(room_id, uid, uname)
+
+    for uid, uname in players:
+        try:
+            is_captain = (uid == captain_id)
+            await bot.send_message(
+                uid,
+                f"🎮 Команда найдена!\n\n" + await room_text(room_id),
+                reply_markup=room_keyboard(room_id, is_captain=is_captain)
+            )
+        except Exception:
+            pass
+
+    await cb.answer("Команда найдена!")
+
+
+@dp.callback_query(F.data == "cancel_search")
+async def cb_cancel_search(cb: types.CallbackQuery):
+    async with search_lock:
+        search_queue[:] = [u for u in search_queue if u[0] != cb.from_user.id]
+    await cb.answer("Поиск отменён")
+    await cb.message.edit_text("Ты вышел из очереди.", reply_markup=main_menu())
 # ---------- Flask для Render ----------
 app = Flask('')
 
