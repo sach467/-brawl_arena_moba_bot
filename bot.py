@@ -17,8 +17,13 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from db import init_db, get_player, set_username, update_rating
+from db import (
+    init_db, get_player, set_username, update_rating,
+    init_rooms_table, create_room, get_room, delete_room,
+    add_player_to_room, get_room_players, remove_player_from_room
+)
 from elo import update_elo, get_rank
+from rooms import generate_room_id, room_keyboard, room_text
 
 TOKEN = os.getenv("TOKEN")
 
@@ -227,6 +232,102 @@ async def start_match(p1, p2, p1_msg, p2_msg):
     except Exception:
         pass
 
+@dp.callback_query(F.data == "create_room")
+async def cb_create_room(cb: types.CallbackQuery):
+    room_id = generate_room_id()
+    await create_room(room_id, cb.from_user.id)
+    await add_player_to_room(room_id, cb.from_user.id, cb.from_user.first_name or "Игрок")
+
+    await cb.answer("Комната создана!")
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=True)
+    )
+
+
+@dp.message(Command("join"))
+async def cmd_join(message: types.Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("Использование: /join КОД (например, /join 1234)")
+        return
+
+    room_id = args[1]
+    room = await get_room(room_id)
+    if not room:
+        await message.answer("Комната не найдена.")
+        return
+
+    players = await get_room_players(room_id)
+    if len(players) >= 6:
+        await message.answer("Комната заполнена.")
+        return
+
+    await add_player_to_room(room_id, message.from_user.id, message.from_user.first_name or "Игрок")
+    await message.answer(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=(room[1] == message.from_user.id))
+    )
+
+
+@dp.callback_query(F.data.startswith("leave_"))
+async def cb_leave(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    await remove_player_from_room(room_id, cb.from_user.id)
+
+    players = await get_room_players(room_id)
+    if not players:
+        await delete_room(room_id)
+        await cb.message.edit_text("Комната закрыта (все вышли).")
+        return
+
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id)
+    )
+
+
+@dp.callback_query(F.data.startswith("ready_"))
+async def cb_ready(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    import aiosqlite
+    async with aiosqlite.connect("game.db") as db:
+        await db.execute(
+            "UPDATE room_players SET is_ready = 1 - is_ready WHERE room_id=? AND user_id=?",
+            (room_id, cb.from_user.id)
+        )
+        await db.commit()
+
+    await cb.answer("Статус изменён")
+    room = await get_room(room_id)
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=(room[1] == cb.from_user.id))
+    )
+
+
+@dp.callback_query(F.data.startswith("start_"))
+async def cb_start(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    room = await get_room(room_id)
+
+    if room[1] != cb.from_user.id:
+        await cb.answer("Только капитан может начать игру.", show_alert=True)
+        return
+
+    players = await get_room_players(room_id)
+    if len(players) < 6:
+        await cb.answer(f"Нужно 6 игроков, сейчас {len(players)}.", show_alert=True)
+        return
+
+    all_ready = all(p[3] for p in players)
+    if not all_ready:
+        await cb.answer("Не все игроки готовы.", show_alert=True)
+        return
+
+    await cb.answer("Игра начинается!")
+    await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")
+    
 
 # ---------- Flask для Render ----------
 app = Flask('')
@@ -244,6 +345,7 @@ def run_flask():
 
 async def main():
     await init_db()
+    await init_rooms_table()
     await dp.start_polling(bot)
 
 
