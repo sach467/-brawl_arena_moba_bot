@@ -1,11 +1,3 @@
-from db import (
-    init_db, get_player, set_username, update_rating,
-    init_rooms_table, create_room, get_room, delete_room,
-    add_player_to_room, get_room_players, remove_player_from_room,
-    add_bot_to_room
-)
-
-from rooms import generate_room_id, room_keyboard, room_text
 import asyncio
 import os
 import random
@@ -22,7 +14,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from db import (
     init_db, get_player, set_username, update_rating,
     init_rooms_table, create_room, get_room, delete_room,
-    add_player_to_room, get_room_players, remove_player_from_room
+    add_player_to_room, get_room_players, remove_player_from_room,
+    add_bot_to_room
 )
 from elo import update_elo, get_rank
 from rooms import generate_room_id, room_keyboard, room_text
@@ -32,7 +25,6 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ---------- Очередь ----------
 queue = {}
 queue_lock = asyncio.Lock()
 
@@ -234,6 +226,7 @@ async def start_match(p1, p2, p1_msg, p2_msg):
     except Exception:
         pass
 
+
 @dp.callback_query(F.data == "create_room")
 async def cb_create_room(cb: types.CallbackQuery):
     room_id = generate_room_id()
@@ -308,7 +301,6 @@ async def cb_ready(cb: types.CallbackQuery):
     )
 
 
-
 @dp.callback_query(F.data.startswith("start_"))
 async def cb_start(cb: types.CallbackQuery):
     room_id = cb.data.split("_")[1]
@@ -322,14 +314,17 @@ async def cb_start(cb: types.CallbackQuery):
     if len(players) < 6:
         await cb.answer(f"Нужно 6 игроков, сейчас {len(players)}.", show_alert=True)
         return
-     all_ready = all(p[3] for p in players)
-     if not all_ready:
+
+    all_ready = all(p[3] for p in players)
+    if not all_ready:
         not_ready = [p[1] for p in players if not p[3]]
         await cb.answer(f"Не готовы: {', '.join(not_ready)}", show_alert=True)
         return
 
     await cb.answer("Игра начинается!")
-    await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")  @dp.callback_query(F.data.startswith("addbot_"))
+    await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")
+
+
 @dp.callback_query(F.data.startswith("addbot_"))
 async def cb_addbot(cb: types.CallbackQuery):
     room_id = cb.data.split("_")[1]
