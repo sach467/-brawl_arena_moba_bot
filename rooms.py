@@ -14,6 +14,7 @@ def room_keyboard(room_id: str, is_captain: bool = False):
     buttons = [
         [InlineKeyboardButton(text="✅ Готов", callback_data=f"ready_{room_id}")],
         [InlineKeyboardButton(text="🎭 Выбрать роль", callback_data=f"roles_{room_id}")],
+        [InlineKeyboardButton(text="💬 Чат", callback_data=f"chat_{room_id}")],
         [InlineKeyboardButton(text="🚪 Выйти", callback_data=f"leave_{room_id}")],
     ]
     if is_captain:
@@ -57,3 +58,7 @@ ROLE_NAMES = {
     "carry": "⚔️ Керри",
     "support": "💚 Саппорт",
 }
+def chat_exit_keyboard(room_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Выйти из чата", callback_data=f"back_{room_id}")]
+    ])
