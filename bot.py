@@ -404,6 +404,46 @@ async def cb_cancel_search(cb: types.CallbackQuery):
         search_queue[:] = [u for u in search_queue if u[0] != cb.from_user.id]
     await cb.answer("Поиск отменён")
     await cb.message.edit_text("Ты вышел из очереди.", reply_markup=main_menu())
+@dp.callback_query(F.data.startswith("roles_"))
+async def cb_roles(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    await cb.answer()
+    await cb.message.edit_text(
+        f"🎭 Выбери свою роль для комнаты #{room_id}:\n\n"
+        f"⚔️ Керри — 2 места\n"
+        f"💚 Саппорт — 1 место",
+        reply_markup=roles_keyboard(room_id)
+    )
+
+
+@dp.callback_query(F.data.startswith("setrole_"))
+async def cb_setrole(cb: types.CallbackQuery):
+    parts = cb.data.split("_")
+    room_id = parts[1]
+    role = parts[2]
+
+    ok = await set_player_role(room_id, cb.from_user.id, role)
+    if not ok:
+        await cb.answer(f"{ROLE_NAMES[role]} — все места заняты!", show_alert=True)
+        return
+
+    await cb.answer(f"Ты выбрал {ROLE_NAMES[role]}")
+    room = await get_room(room_id)
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=(room[1] == cb.from_user.id))
+    )
+
+
+@dp.callback_query(F.data.startswith("back_"))
+async def cb_back(cb: types.CallbackQuery):
+    room_id = cb.data.split("_")[1]
+    room = await get_room(room_id)
+    await cb.answer()
+    await cb.message.edit_text(
+        await room_text(room_id),
+        reply_markup=room_keyboard(room_id, is_captain=(room[1] == cb.from_user.id))
+    )    
 # ---------- Flask для Render ----------
 app = Flask('')
 
