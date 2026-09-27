@@ -53,13 +53,10 @@ async def update_rating(user_id: int, new_rating: int, win: bool):
             await db.execute(
                 "UPDATE players SET rating=?, losses=losses+1 WHERE user_id=?",
                 (new_rating, user_id)
-            )await db.commit()
-await db.execute("""
-    CREATE TABLE IF NOT EXISTS room_chat_state (
-        user_id INTEGER PRIMARY KEY,
-        room_id TEXT
-    )
-""")            
+            )
+        await db.commit()
+
+
 async def init_rooms_table():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -79,14 +76,14 @@ async def init_rooms_table():
                 PRIMARY KEY (room_id, user_id)
             )
         """)
-        
         await db.execute("""
-    CREATE TABLE IF NOT EXISTS room_chat_state (
-        user_id INTEGER PRIMARY KEY,
-        room_id TEXT
-    )
-""")
+            CREATE TABLE IF NOT EXISTS room_chat_state (
+                user_id INTEGER PRIMARY KEY,
+                room_id TEXT
+            )
+        """)
         await db.commit()
+
 
 async def create_room(room_id: str, captain_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -137,6 +134,8 @@ async def remove_player_from_room(room_id: str, user_id: int):
             (room_id, user_id)
         )
         await db.commit()
+
+
 async def add_bot_to_room(room_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -155,6 +154,8 @@ async def add_bot_to_room(room_id: str):
         )
         await db.commit()
         return True
+
+
 async def set_player_role(room_id: str, user_id: int, role: str):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -188,7 +189,9 @@ async def set_player_role(room_id: str, user_id: int, role: str):
             (role, room_id, user_id)
         )
         await db.commit()
-        return True        
+        return True
+
+
 async def set_chat_state(user_id: int, room_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -210,4 +213,4 @@ async def get_chat_state(user_id: int):
 async def clear_chat_state(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM room_chat_state WHERE user_id=?", (user_id,))
-        await db.commit()
+        await db.commit()        
