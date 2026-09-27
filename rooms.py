@@ -13,6 +13,7 @@ def generate_room_id() -> str:
 def room_keyboard(room_id: str, is_captain: bool = False):
     buttons = [
         [InlineKeyboardButton(text="✅ Готов", callback_data=f"ready_{room_id}")],
+        [InlineKeyboardButton(text="🎭 Выбрать роль", callback_data=f"roles_{room_id}")],
         [InlineKeyboardButton(text="🚪 Выйти", callback_data=f"leave_{room_id}")],
     ]
     if is_captain:
