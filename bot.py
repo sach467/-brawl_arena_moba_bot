@@ -329,8 +329,8 @@ if not all_ready:
     return
 
     await cb.answer("Игра начинается!")
-    await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")
-    @dp.callback_query(F.data.startswith("addbot_"))
+    await cb.message.edit_text("🎮 Игра началась! (бой появится в следующем шаге)")  @dp.callback_query(F.data.startswith("addbot_"))
+@dp.callback_query(F.data.startswith("addbot_"))
 async def cb_addbot(cb: types.CallbackQuery):
     room_id = cb.data.split("_")[1]
     room = await get_room(room_id)
@@ -349,7 +349,6 @@ async def cb_addbot(cb: types.CallbackQuery):
         await room_text(room_id),
         reply_markup=room_keyboard(room_id, is_captain=True)
     )
-
 
 
 # ---------- Flask для Render ----------
