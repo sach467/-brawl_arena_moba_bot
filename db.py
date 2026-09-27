@@ -53,8 +53,13 @@ async def update_rating(user_id: int, new_rating: int, win: bool):
             await db.execute(
                 "UPDATE players SET rating=?, losses=losses+1 WHERE user_id=?",
                 (new_rating, user_id)
-            )
-        await db.commit()
+            )await db.commit()
+await db.execute("""
+    CREATE TABLE IF NOT EXISTS room_chat_state (
+        user_id INTEGER PRIMARY KEY,
+        room_id TEXT
+    )
+""")            
 async def init_rooms_table():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
